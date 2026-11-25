@@ -29,6 +29,7 @@ import { BarraCloud, PesoQui } from "./BarraCloud.jsx";
 import { ESITI_CONTROLLO } from "../lib/aggiornamenti.js";
 import { famigliaDi } from "../data/generi.js";
 import { riconosci, capitoloDi } from "../lib/sagaBooks.js";
+import { raccogliDallaCartella, fraseRaccogliere } from "../lib/raccolteDalDisco.js";
 import { camminiDi, guideAccanto, mondiDi, accantoInVista, ACCANTO_IN_VISTA } from "../lib/cammino.js";
 import { segnaposto } from "../lib/segnaposto.js";
 import BookCover from "./BookCover.jsx";
@@ -3263,6 +3264,35 @@ export default function Library({
                           );
                         })}
                       </ul>
+                    )}
+                    {/* LA CARTELLA DICE LA SAGA (`daRaccogliere`): prima l'elenco, poi il tasto */}
+                    {r.daRaccogliere?.length > 0 && (
+                      <span style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, overflowWrap: "anywhere" }}>
+                        <span style={{ flexBasis: "100%" }}>
+                          {`${fraseRaccogliere(r.daRaccogliere.length)} `}
+                          <span style={{ color: C.text }}>
+                            {r.daRaccogliere
+                              .slice(0, 12)
+                              .map((v) => `${v.libro.title} → ${v.saga}${v.ciclo ? ` · ${v.ciclo}` : ""}${v.sagaOrder != null ? ` n. ${v.sagaOrder}` : ""}`)
+                              .join(" · ")}
+                          </span>
+                          {r.daRaccogliere.length > 12 ? ` e altri ${r.daRaccogliere.length - 12}` : ""}
+                        </span>
+                        {!disco.raccolti && (
+                          <button
+                            onClick={() => {
+                              const ids = new Set(r.daRaccogliere.map((v) => v.libro.id));
+                              updateBooks(raccogliDallaCartella(booksRef.current, r.daRaccogliere));
+                              for (const id of ids) timbraScheda(id);
+                              setDisco((d) => ({ ...d, raccolti: true }));
+                              notify(`📁 ${ids.size === 1 ? "Un volume messo" : `${ids.size} volumi messi`} nella raccolta della ${ids.size === 1 ? "sua" : "loro"} cartella`);
+                            }}
+                            style={{ minHeight: 44, padding: "7px 16px", borderRadius: R.piccolo, border: `1px solid ${C.accent}88`, color: C.accent, fontSize: F.nota }}
+                          >
+                            {`📁 Metti ${r.daRaccogliere.length === 1 ? "il volume" : `i ${r.daRaccogliere.length} volumi`} nelle raccolte`}
+                          </button>
+                        )}
+                      </span>
                     )}
                     {mancanti.map(([bs, dove]) => (
                       <span key={dove} style={{ flexBasis: "100%", overflowWrap: "anywhere" }}>

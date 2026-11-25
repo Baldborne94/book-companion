@@ -50,3 +50,26 @@ export async function casaDelDisco(scelta) {
   }
   return null;
 }
+
+// LA CARTELLA DICE LA SAGA QUANDO IL NOME DEL FILE NON LA DICE (chiesto dal
+// lettore dopo l'importazione dal NAS: «voglio una regola per cui queste
+// cose non ricapitino», con i BLAME! chiamati «0 (1)» e i Freesia «v03»
+// sciolti fra i «Volumi soli»). Dentro Libri, Fumetti o Manga la prima
+// cartella e' la saga e la seconda la parte, come in `casaDelVolume`; le
+// cartelle col trattino basso davanti (`_Doppioni`, `_Copie`) non sono saghe.
+export function sagaDallaCartella(cartelle) {
+  const [tipo, saga, parte] = (cartelle || []).map((c) => String(c || "").trim());
+  const sezioni = Object.values(CARTELLE).filter((c) => c !== CARTELLE.musica).map((c) => c.toLowerCase());
+  if (!sezioni.includes(String(tipo || "").toLowerCase())) return null;
+  if (!saga || saga.startsWith("_")) return null;
+  return { saga, ...(parte && !parte.startsWith("_") ? { ciclo: parte } : {}) };
+}
+
+// Il numero di un file che dice solo quello: «v03», «Vol. 3», «03», e
+// «0 (4)», il quarto «0» che Drive e Windows numerano fra parentesi.
+export function numeroDalNome(nome) {
+  const s = String(nome || "").replace(/\.[a-z0-9]{2,5}$/i, "").trim();
+  const m = /^(?:v|vol\.?|volume)?\s*(\d{1,3})$/i.exec(s) || /^\d{1,3}\s*\((\d{1,3})\)$/.exec(s);
+  const n = m ? Number(m[1]) : NaN;
+  return n > 0 ? n : null;
+}

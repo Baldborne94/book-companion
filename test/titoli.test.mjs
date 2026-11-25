@@ -123,6 +123,10 @@ export default async function (t) {
   t.eq("anche dopo il solo anno", senzaEtichette("Biomega v06 (2010) (Grupetto)"), "Biomega v06");
   t.eq("il sito da solo, senza anno davanti", senzaEtichette("Saga v01 - Alba GetComics.INFO"), "Saga v01 - Alba");
   t.eq("ma un gruppo sconosciuto da solo resta", senzaEtichette("Biomega v06 (Grupetto)"), "Biomega v06 (Grupetto)");
+  // il nome scritto per un disco: le parentesi sono trattini bassi, e
+  // l'etichetta comincia dall'anno dopo il volume
+  t.eq("un nome da disco perde anno, «Digital» e gruppo", f("Fullmetal_Alchemist_v24_2011_Digital_LostNerevarine_Empire", 24), "Fullmetal Alchemist v24");
+  t.eq("…ma un anno che non viene dopo il volume resta", f("Slam_Dunk,_10_Days_After_2004_Fruity_Explosive_Translation"), "Slam Dunk, 10 Days After 2004 Fruity Explosive Translation");
   t.eq("il pallino davanti a un romanzo", titoloPulito({ title: "• The Crippled God", fileType: "epub" }), "The Crippled God");
   t.eq("e davanti a un fumetto", f("· Monsters Gonna Monster"), "Monsters Gonna Monster");
   t.eq("un titolo di fumetto gia' pulito: niente", f("Monsters Gonna Monster"), null);

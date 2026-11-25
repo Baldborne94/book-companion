@@ -9,9 +9,10 @@
 // file nessuna scheda riconosce. Riordinare sposta solo dentro il disco, e
 // non copre mai un file.
 
-import { nomeNudo, casaDelVolume } from "./casa.js";
+import { nomeNudo, casaDelVolume, sagaDallaCartella, numeroDalNome } from "./casa.js";
 import { nomeSicuro, cartellaDentro } from "./hdd.js";
 import { senzaEtichette } from "./titoli.js";
+import { sagaDalTitolo } from "./sagaDalTitolo.js";
 
 const EST_DISCO = /\.(epub|pdf|cbz|cbr)$/i;
 const chiave = (s) => String(s || "").trim().toLowerCase();
@@ -321,7 +322,7 @@ export function controllaDisco(libri, file, { tipoDi = () => "libri", qui = () =
   // riempie al giro dopo): non e' un volume, si dice a parte
   const pieni = (file || []).filter((f) => f.byte > 0);
   const { di, altre } = abbinaDisco(vivi, pieni, (b) => casaDi(b, tipoDi(b)).map(chiave).join("/"));
-  const esito = { aPosto: [], daSpostare: [], doppioni: [], altreEdizioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { qui: [], altrove: [], nessuno: [] }, senzaScheda: [], daSegnare: [], byte: 0 };
+  const esito = { aPosto: [], daSpostare: [], doppioni: [], altreEdizioni: [], vuoti: (file || []).filter((f) => !(f.byte > 0)), mancano: { qui: [], altrove: [], nessuno: [] }, senzaScheda: [], daSegnare: [], daRaccogliere: [], byte: 0 };
   const case_ = new Map();
   const usati = new Set();
   for (const b of vivi) {
@@ -357,7 +358,18 @@ export function controllaDisco(libri, file, { tipoDi = () => "libri", qui = () =
     for (const f of volumi) {
       esito.byte += f.byte;
       const c = case_.get(f);
-      if (aCasa(f)) esito.aPosto.push({ libro: c.libri[0], file: f });
+      // UN VOLUME SENZA SAGA NELLA CARTELLA DI UNA SAGA non e' fuori posto: e'
+      // la scheda che non sa dove sta («0 (1)» dentro «Manga/BLAME!»).
+      // «Riordina» lo portava fuori dalla sua saga; ora resta, e la scheda si
+      // propone nella raccolta della cartella (`sagaDallaCartella`). Una saga
+      // tolta a mano resta tolta.
+      const solo = c.libri[0];
+      const cartella = c.libri.every((b) => !String(b.saga || "").trim() && !b.sagaTolta) ? sagaDallaCartella(f.cartelle) : null;
+      if (cartella) {
+        esito.aPosto.push({ libro: solo, file: f });
+        const n = solo.sagaOrder ?? sagaDalTitolo({ title: solo.title, fileName: f.nome, fileType: solo.fileType })?.sagaOrder ?? numeroDalNome(f.nome);
+        esito.daRaccogliere.push({ libro: solo, file: f, ...cartella, ...(n != null ? { sagaOrder: n } : {}) });
+      } else if (aCasa(f)) esito.aPosto.push({ libro: c.libri[0], file: f });
       else if (c.case.size === 1) {
         const b = c.libri[0];
         esito.daSpostare.push({ libro: b, file: f, a: casaDi(b, tipoDi(b)) });
@@ -510,6 +522,7 @@ export function rapportoDisco(r) {
     if (bs.length) righe.push(`Mancano dal disco, ${dove} (${bs.length}):`, ...titoli(bs));
   if (r.senzaScheda.length) righe.push(`File senza scheda (${r.senzaScheda.length}):`, ...file(r.senzaScheda));
   if (r.altreEdizioni?.length) righe.push(`Altre edizioni di volumi che hanno gia' il loro file (${r.altreEdizioni.length}):`, ...r.altreEdizioni.map((x) => `${file([x.file])[0]} -> ${x.libro.title}`));
+  if (r.daRaccogliere?.length) righe.push(`Senza raccolta, nella cartella della loro saga (${r.daRaccogliere.length}):`, ...r.daRaccogliere.map((v) => `  - ${v.libro.title} -> ${v.saga}${v.ciclo ? ` / ${v.ciclo}` : ""}`));
   if (r.daSegnare?.length) righe.push(`Sul disco, ma la scheda li crede persi (${r.daSegnare.length}):`, ...titoli(r.daSegnare));
   if (r.vuoti?.length) righe.push(`File vuoti, copie rimaste a meta' (${r.vuoti.length}):`, ...file(r.vuoti));
   if (r.doppioni.length) righe.push(`Copie in piu', stesso nome e stesso peso (${r.doppioni.length}):`, ...file(r.doppioni));
@@ -531,6 +544,7 @@ export function vociDalDisco(file) {
     size: f.byte,
     ...(SEZIONE[chiave(f.cartelle[0])] && SEZIONE[chiave(f.cartelle[0])] !== "libri" ? { tipo: SEZIONE[chiave(f.cartelle[0])] } : {}),
     handle: f.handle,
+    cartelle: f.cartelle || [],
   }));
 }
 // le schede dopo l'import: le nuove e quelle a cui il file e' tornato sono

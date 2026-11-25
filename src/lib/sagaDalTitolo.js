@@ -114,8 +114,12 @@ const PRIMA_QUADRE = new RegExp(
 //    di chi ha impacchettato il file. Il numero nudo si prende SOLO con lo
 //    zero davanti («042», «01»): «Fahrenheit 451» e «Slaughterhouse 5» non
 //    ne hanno, e sono romanzi.
+// Nei nomi scritti per un disco le parentesi sono diventate trattini bassi
+// («Fullmetal_Alchemist_v01_2005_Digital_LostNerevarine_Empire»): il rumore
+// comincia dall'anno. E «v08v2» e' la seconda uscita del volume 8
+// (segnalato dal lettore: «perché non hai riconosciuto questi?»).
 const FUMETTO = new RegExp(
-  `^(.+?)(?:\\s*[-–—:]\\s*|\\s+)(?:(?:v|vol\\.?|volume|tomo|t\\.)\\s*(\\d{1,3})|(0\\d{1,2}))(?:\\s*[(\\[].*)?$`,
+  `^(.+?)(?:\\s*[-–—:]\\s*|\\s+)(?:(?:v|vol\\.?|volume|tomo|t\\.)\\s*(\\d{1,3})(?:v\\d)?|(0\\d{1,2}))(?:\\s*[(\\[].*|\\s+(?:19|20)\\d{2}\\b.*)?$`,
   "i"
 );
 // G2. IL CAPITOLO DI UN FUMETTO, numero nudo senza zero davanti: «Kagurabachi
