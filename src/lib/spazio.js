@@ -108,9 +108,8 @@ export function spartisci(dati, piano = PIANO) {
     // quel che il secchio pesa davvero, e se un giorno ci finisse dentro una
     // terza specie di file la barra direbbe meno spazio libero — che e' la
     // bugia giusta da dire, perche' quello spazio davvero non c'e' piu'
-    // senza piano (il NAS) non c'e' un vuoto da dire ne' un oltre
-    liberi: piano ? Math.max(0, piano - totale) : null,
-    sforato: piano ? Math.max(0, totale - piano) : 0,
+    liberi: Math.max(0, piano - totale),
+    sforato: Math.max(0, totale - piano),
   };
 }
 
@@ -152,4 +151,22 @@ export function spartisciQui(qui) {
     libri: n(qui.libri?.byte) + n(qui.copertine?.byte),
     melodie: n(qui.melodie?.byte),
   };
+}
+
+// SUL NAS LA BARRA NON DICE NIENTE (segnalato dal lettore con la foto: «ci
+// sono sti messaggi che non mi tornano»): senza piano era tutta piena, e
+// sotto nessuna voce, perche' lassu' i libri sono zero — i loro file stanno
+// sulle cartelle del NAS, non nel secchio — e i 341 MB erano le copertine.
+// Al posto della barra, a parole, cosa c'e'.
+export function cosaCeLassu(dati) {
+  if (!dati) return null;
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const libri = n(dati.libri?.quanti);
+  const melodie = n(dati.melodie?.quanti);
+  const pezzi = [];
+  if (libri > 0) pezzi.push(libri === 1 ? "un libro" : `${libri} libri`);
+  if (n(dati.copertine?.byte) > 0) pezzi.push("le copertine");
+  if (melodie > 0) pezzi.push(melodie === 1 ? "una melodia" : `${melodie} melodie`);
+  if (!pezzi.length) return null;
+  return pezzi.length === 1 ? pezzi[0] : `${pezzi.slice(0, -1).join(", ")} e ${pezzi.at(-1)}`;
 }

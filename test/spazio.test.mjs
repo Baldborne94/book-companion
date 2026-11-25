@@ -13,6 +13,7 @@ import {
   fetta,
   spartisci,
   spartisciQui,
+  cosaCeLassu,
   pianoDelPosto,
   PIANO,
   PIENO,
@@ -219,10 +220,11 @@ export default async function (t) {
   t.eq("su Vercel (config.js vuoto) il piano c'e'", pianoDelPosto({}), PIANO);
   t.eq("senza config.js il piano c'e'", pianoDelPosto(undefined), PIANO);
   t.eq("col Supabase del NAS il piano non c'e'", pianoDelPosto({ supabaseUrl: "https://book-companion.x.ts.net" }), null);
-  const M2 = 1e6;
-  const nas = spartisci({ libri: { byte: 300 * M2 }, copertine: { byte: 41 * M2 }, melodie: { byte: 0 }, totale: 341 * M2 }, null);
-  t.eq("senza piano nessun «liberi»", nas.liberi, null);
-  t.eq("…e niente «oltre il piano», anche oltre il gigabyte", spartisci({ libri: { byte: 3e9 }, totale: 3e9 }, null).sforato, 0);
+  // e al posto della barra, sempre piena e senza voci, si dice cosa c'e'
+  // (la foto del lettore: 341 MB lassu', zero libri, le sole copertine)
+  t.eq("sul NAS del lettore: le sole copertine", cosaCeLassu({ libri: { quanti: 0, byte: 0 }, copertine: { quanti: 1692, byte: 341e6 }, melodie: { quanti: 0, byte: 0 }, totale: 341e6 }), "le copertine");
+  t.eq("…e coi libri del secchio e le melodie", cosaCeLassu({ libri: { quanti: 3, byte: 1 }, copertine: { quanti: 3, byte: 1 }, melodie: { quanti: 1, byte: 1 } }), "3 libri, le copertine e una melodia");
+  t.eq("…niente lassu', niente frase", cosaCeLassu({ libri: { quanti: 0 }, copertine: { byte: 0 }, melodie: { quanti: 0 } }), null);
   t.eq("la fetta si misura sulla base data", fetta(50, 200), "25%");
 }
 
