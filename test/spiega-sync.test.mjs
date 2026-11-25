@@ -146,4 +146,13 @@ export default async function (t) {
       t.c("…e la frase non è mai vuota", typeof r.frase === "string" && r.frase.length > 0);
     }
   }
+  // ---- LA PAGINA D'ERRORE DI NGINX (il tablet sul NAS, 502) -------------
+  // il messaggio vero dal pannello della nuvola: l'HTML intero, senza stato
+  const pagina = "<html> <head><title>502 Bad Gateway</title></head> <body> <center><h1>502 Bad Gateway</h1></center> <hr><center>nginx/1.30.8</center> </body> </html> <!-- a padding to disable MSIE and Chrome friendly error page -->";
+  const p = spiegaSync({ message: pagina });
+  t.c("la pagina HTML non arriva sullo schermo", !/<html|<title>|padding/i.test(p.frase), p.frase);
+  t.c("…e dice che riprova da sola", /riprovo/.test(p.frase), p.frase);
+  t.eq("il codice resta nel dettaglio, pulito", p.dettaglio, "Errore 502 dal server");
+  t.c("una pagina di gateway senza codice: niente dettaglio inventato", spiegaSync({ message: "<html><title>Service Unavailable</title></html>" }).dettaglio === null);
 }
+

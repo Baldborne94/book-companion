@@ -1,6 +1,6 @@
 import { C, F, R } from "../data/constants.js";
 import { fmtBytes } from "../lib/bytes.js";
-import { PIANO, fetta, spartisci, stretto } from "../lib/spazio.js";
+import { fetta, pianoDelPosto, spartisci, stretto } from "../lib/spazio.js";
 
 // La voce della legenda: un quadretto del colore della sua regione e il
 // testo accanto. Sta qui e la usano tutt'e due le righe, perché è proprio
@@ -73,18 +73,21 @@ export function PesoQui({ parti, estimate }) {
 export function BarraCloud({ dati, compatta }) {
   if (!dati) return null;
   const { libri, melodie, totale } = dati;
-  const { libri: byteLibri, melodie: byteMelodie, liberi, sforato } = spartisci(dati);
+  const piano = pianoDelPosto();
+  const { libri: byteLibri, melodie: byteMelodie, liberi, sforato } = spartisci(dati, piano);
+  // senza piano la barra e' tutta piena: dice di cosa e' fatto, non quanto manca
+  const base = piano || Math.max(1, byteLibri + byteMelodie);
   return (
     <div style={compatta ? { marginTop: 10 } : { marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
         <span style={{ fontSize: compatta ? F.piccolo : F.nota, color: C.text }}>
           ☁ {fmtBytes(totale)} lassù
         </span>
-        <span style={{ fontSize: F.minuscolo, color: C.muted }}>di {fmtBytes(PIANO)} del piano gratuito</span>
+        <span style={{ fontSize: F.minuscolo, color: C.muted }}>{piano ? `di ${fmtBytes(piano)} del piano gratuito` : "sul NAS di casa"}</span>
       </div>
       <div style={{ display: "flex", height: 8, borderRadius: R.minimo, overflow: "hidden", background: C.dim }}>
-        <div style={{ width: fetta(byteLibri), background: C.accent }} />
-        <div style={{ width: fetta(byteMelodie), background: C.arcane }} />
+        <div style={{ width: fetta(byteLibri, base), background: C.accent }} />
+        <div style={{ width: fetta(byteMelodie, base), background: C.arcane }} />
       </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8, fontSize: F.minuscolo, color: C.muted }}>
         {/* GLI ZERI NON SI DICONO, qui come nel resoconto dell'import: «0
@@ -103,7 +106,7 @@ export function BarraCloud({ dati, compatta }) {
             piano è stato passato non si scrive «0 liberi», che è vero solo
             per modo di dire: si dice di quanto — un numero fermo a zero
             nasconderebbe proprio la misura del guaio. */}
-        {sforato > 0 ? voce(C.accent, `${fmtBytes(sforato)} oltre il piano`) : voce(C.dim, `${fmtBytes(liberi)} liberi`)}
+        {sforato > 0 ? voce(C.accent, `${fmtBytes(sforato)} oltre il piano`) : liberi != null && voce(C.dim, `${fmtBytes(liberi)} liberi`)}
       </div>
     </div>
   );

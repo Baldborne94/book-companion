@@ -1096,6 +1096,17 @@ export function spiegaSync(err) {
   if (stato >= 500)
     return { frase: "Il cloud ha risposto male: riprovo più tardi da solo. I tuoi libri restano qui.", dettaglio: testo };
 
+  // LA PAGINA D'ERRORE DI UN PROXY (nginx del NAS, un gateway): arriva come
+  // HTML intero dentro il messaggio, senza stato, e sullo schermo finiva com'era
+  // («Sincronizzazione fallita: <html> <head><title>502 Bad Gateway…»).
+  if (/<html|<title>|bad gateway|gateway time-?out|service unavailable/i.test(testo)) {
+    const codice = testo.match(/\b(50[0-9])\b/)?.[1];
+    return {
+      frase: "Il server della sincronizzazione non ha risposto bene: riprovo più tardi da solo. I tuoi libri restano qui.",
+      dettaglio: codice ? `Errore ${codice} dal server` : null,
+    };
+  }
+
   // QUEL CHE NON SAPPIAMO TRADURRE SI MOSTRA COM'E' — ma allora il testo
   // grezzo E' gia' la frase, e ripeterlo sotto «dettagli» lo scriverebbe
   // due volte.
