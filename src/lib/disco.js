@@ -196,10 +196,22 @@ function abbinaDisco(libri, file, casaDi = () => null) {
     if (!perNome.has(k)) perNome.set(k, []);
     perNome.get(k).push(f);
   }
+  // IL NOME INTERO VINCE SUL NOME NUDO (segnalato dal lettore coi BLAME!
+  // «0 (1)»…«0 (10)», dieci schede e dieci file: tolto il «(3)» delle copie
+  // di Windows si chiamavano tutti «0», e la prima scheda si prendeva tutti e
+  // dieci i file). Un file che si chiama come una scheda, «(n)» compreso, e'
+  // suo; il «(n)» resta il segno di una copia solo dove nessuna scheda porta
+  // quel nome intero.
+  const intero = (s) => String(s || "").replace(/\.[a-z0-9]{2,5}$/i, "").trim().toLowerCase();
+  const titoli = new Set(libri.map((b) => intero(b.title)));
+  const diUnAltro = (f, b) => titoli.has(intero(f.nome)) && intero(f.nome) !== intero(b.title);
   const di = new Map();
   const presi = new Set();
   for (const b of libri) {
-    const fs = perNome.get(nomeNudo(b.title));
+    // la stessa lista per due schede omonime: chi conta i volumi la riconosce
+    // per identita' (`usati`), e una copia filtrata li conterebbe due volte
+    const tutti = perNome.get(nomeNudo(b.title));
+    const fs = tutti?.some((f) => diUnAltro(f, b)) ? tutti.filter((f) => !diUnAltro(f, b)) : tutti;
     if (fs?.length) {
       di.set(b, fs);
       for (const f of fs) presi.add(f);

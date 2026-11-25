@@ -48,6 +48,14 @@ export default async (t) => {
   t.eq("i due volumi senza saga stanno nella loro cartella e si propongono", r.daRaccogliere.map((v) => `${v.libro.id}>${v.saga}${v.ciclo ? `/${v.ciclo}` : ""}#${v.sagaOrder}`).join(" "), "b1>BLAME!#1 f3>Freesia/Parte 1#3");
   t.eq("…e «Riordina» non li sposta: sposta solo la saga tolta a mano", r.daSpostare.map((v) => v.libro.id).join(), "via");
   t.eq("…e contano fra i volumi sul disco (il NAS li ritrova)", r.aPosto.map((v) => v.libro.id).sort().join(), "b1,f3");
+  // I DIECI BLAME! DEL LETTORE: «0 (1)»…«0 (10)», dieci schede e dieci file.
+  // Tolto il «(n)» delle copie di Windows si chiamavano tutti «0», e la
+  // prima scheda si prendeva tutti e dieci i file: uno solo entrava nella
+  // raccolta, col numero di un altro
+  const dieci = Array.from({ length: 10 }, (_, i) => ({ id: `z${i + 1}`, title: `0 (${i + 1})`, fileType: "cbz", tipo: "manga" }));
+  const fileDieci = Array.from({ length: 10 }, (_, i) => ({ nome: `0 (${i + 1}).cbz`, cartelle: ["Manga", "BLAME!"], byte: 1000 + i }));
+  const rd = controllaDisco(dieci, fileDieci, { tipoDi: (b) => b.tipo });
+  t.eq("ogni «0 (n)» prende il suo file e il suo numero", rd.daRaccogliere.map((v) => `${v.libro.title}=${v.sagaOrder}`).join(" "), dieci.map((b, i) => `${b.title}=${i + 1}`).join(" "));
   const dopo = raccogliDallaCartella([...libri, { id: "x", title: "Blame! v02", saga: "Blame!" }], r.daRaccogliere);
   t.eq("confermato, la scheda prende saga e numero, con la grafia di casa", `${dopo[0].saga} ${dopo[0].sagaOrder}`, "Blame! 1");
   t.eq("…e una serie scritta a mano resta", `${dopo[1].saga} ${dopo[1].series} ${dopo[1].sagaOrder}`, "Freesia a mano 3");
