@@ -852,7 +852,7 @@ export const chiaveSaga = (s) => senzaArticolo(s);
 // Rising Saga» sono la stessa saga; «Witcher» e «The Witcher» pure. Lo usano
 // lo scaffale (una serie col nome della raccolta non la divide) e «Saghe da
 // sistemare» (due raccolte con lo stesso nucleo sono una).
-const GENERICHE_SERIE = new Set(["the", "a", "an", "il", "lo", "la", "i", "gli", "le", "saga", "series", "serie", "trilogy", "trilogia", "cycle", "ciclo", "sequence", "novels", "romanzi", "universe", "universo"]);
+const GENERICHE_SERIE = new Set(["the", "a", "an", "il", "lo", "la", "i", "gli", "le", "saga", "series", "serie", "trilogy", "trilogia", "cycle", "ciclo", "sequence", "novels", "romanzi", "universe", "universo", "chronicles", "chronicle", "cronache", "of", "di", "del", "della"]);
 export const nucleoSerie = (s) =>
   String(s || "").trim()
     .normalize("NFD")
@@ -1171,6 +1171,26 @@ const siglaDi = (b) => {
   const m = SIGLA_NEL_TITOLO.exec(String(b?.title || ""));
   return !!m && chiaveSaga(b?.saga) === m[1];
 };
+// I NOMI D'USO DI UN MONDO, oltre a quello della tavola: «Circle of the
+// World» e' il nome che Abercrombie da' al mondo di First Law, e il lettore
+// lo usa per la raccolta
+const NOMI_DEL_MONDO = { "The First Law": ["Circle of the World"] };
+function nucleiDelMondo(mondo) {
+  return {
+    guide: new Set(TAVOLE.filter((t) => t.universo === mondo).map((t) => nucleoSerie(t.saga))),
+    nomi: new Set([mondo, ...(NOMI_DEL_MONDO[mondo] || [])].map(nucleoSerie)),
+  };
+}
+// la raccolta del mondo sullo scaffale: fra quelle coi nomi del mondo, la
+// grafia con piu' libri
+function raccoltaDelMondo(delMondo, libri) {
+  const conti = new Map();
+  for (const b of libri) {
+    const s = String(b?.saga || "").trim();
+    if (s && delMondo.nomi.has(nucleoSerie(s))) conti.set(s, (conti.get(s) || 0) + 1);
+  }
+  return [...conti].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))[0]?.[0] || null;
+}
 // per ogni nucleo la grafia che vince: la piu' usata, a pari libri la piu'
 // lunga (quella con l'articolo), poi l'alfabeto, come in `unificaSaghe`
 function nomiPerNucleo(libri) {
@@ -1225,12 +1245,25 @@ export function saghePropose(libri = []) {
     // diventa la serie, il numero resta. La prima versione voleva il mondo
     // sparso in due raccolte, e con la sola Eresia non proponeva niente
     // («non ci sono saghe da sistemare ma io warhammer non lo vedo")
-    if (guida?.titolo && chiaveSaga(prima.saga) === chiaveSaga(guida.saga)) {
-      const mondo = TAVOLE.find((t) => t.saga === guida.saga)?.universo;
-      if (mondo) {
-        const saga = (cache.nomi ??= nomiPerNucleo(tutti)).get(nucleoSerie(mondo)) || mondo;
-        const dopo = { saga, series: chiaveSaga(guida.saga).startsWith(chiaveSaga(mondo)) ? "" : guida.saga, sagaOrder: prima.sagaOrder };
-        out.push({ id: b.id, titolo: b.title || "", prima, dopo });
+    // E VALE ANCHE PER CHI STA NELLA RACCOLTA DI UN'ALTRA GUIDA DELLO STESSO
+    // MONDO, o in quella del mondo senza la sua serie (il lettore: «mi
+    // sistemi anche tutti i libri del mondo circle of the world?»: The Blade
+    // Itself e Best Served Cold dentro «The Age of Madness», A Little Hatred
+    // dentro «The First Law»). Il mondo ha anche i suoi nomi d'uso
+    // (`NOMI_DEL_MONDO`: «Circle of the World» e' quello di Abercrombie);
+    // vince la raccolta del mondo che ha piu' libri. Chi sta gia' nella
+    // raccolta del mondo con una serie sua la tiene
+    const mondo = guida?.titolo ? TAVOLE.find((t) => t.saga === guida.saga)?.universo : null;
+    if (mondo) {
+      const delMondo = (cache.mondi ??= new Map()).get(mondo) || nucleiDelMondo(mondo);
+      cache.mondi.set(mondo, delMondo);
+      const n = nucleoSerie(prima.saga);
+      if (delMondo.guide.has(n) || delMondo.nomi.has(n)) {
+        const saga = raccoltaDelMondo(delMondo, tutti) || mondo;
+        const suaSerie = guida.saga.startsWith(`${mondo} ·`) ? "" : guida.saga;
+        const series = nucleoSerie(prima.saga) === nucleoSerie(saga) && prima.series ? prima.series : suaSerie;
+        const dopo = { saga, series, sagaOrder: prima.sagaOrder };
+        if (dopo.saga !== prima.saga || dopo.series !== prima.series) out.push({ id: b.id, titolo: b.title || "", prima, dopo });
         continue;
       }
     }
@@ -1238,6 +1271,15 @@ export function saghePropose(libri = []) {
     // per tutti i libri che appartengono alla stessa saga»): «Witcher» e «The
     // Witcher», «Red Rising» e «The Red Rising Saga». Si va nella grafia che
     // ha piu' libri; serie e numero restano
+    // e una raccolta col nome d'uso di un mondo («Circle of the World») va
+    // nella raccolta del mondo che ha piu' libri, anche per i libri che
+    // nessuna guida conosce (Sharp Ends, i racconti)
+    const mondoDelNome = Object.keys(NOMI_DEL_MONDO).find((m) => nucleiDelMondo(m).nomi.has(nucleoSerie(prima.saga)));
+    const casaDelMondo = mondoDelNome ? raccoltaDelMondo(nucleiDelMondo(mondoDelNome), tutti) : null;
+    if (casaDelMondo && casaDelMondo !== prima.saga) {
+      out.push({ id: b.id, titolo: b.title || "", prima, dopo: { ...prima, saga: casaDelMondo } });
+      continue;
+    }
     const unica = (cache.nomi ??= nomiPerNucleo(tutti)).get(nucleoSerie(prima.saga));
     if (prima.saga && unica && unica !== prima.saga) {
       out.push({ id: b.id, titolo: b.title || "", prima, dopo: { ...prima, saga: unica } });
