@@ -94,6 +94,10 @@ export default async (t) => {
   t.eq("i capitoli restano capitoli", tre(s("Solo Leveling c91-100")), "Solo Leveling||100");
   const spawn = saghePropose([{ id: "sp", title: "Spawn Origins Collection Vol. 02-017", saga: "Spawn Origins Collection Vol", sagaOrder: 17 }])[0];
   t.eq("la saga che finisce con «Vol» si propone senza", fraseSaga(spawn?.dopo), "Spawn Origins Collection · n. 2");
+  // il lettore, nella foto di «Saghe da sistemare»: «Book Two-027» proposto
+  // come la saga «Book Two», n. 27. È il secondo libro, nella copia di Drive
+  t.eq("«Book Two-027» è il volume 2", tre(s("Kill Six Billion Demons - Book Two-027")), "Kill Six Billion Demons||2");
+  t.eq("…e non si propone niente", saghePropose([{ id: "k6", title: "Kill Six Billion Demons - Book Two-027", saga: "Kill Six Billion Demons", sagaOrder: 2 }]).length, 0);
   t.c("«Grendel» dentro «Grendel Omnibus» resta com'è", !saghePropose([{ id: "o", title: "Grendel v01 - Devil by the Deed", saga: "Grendel Omnibus", sagaOrder: 1 }]).length);
 
   // DUE GRAFIE SONO UNA SAGA SOLO DENTRO UNA PAROLA LUNGA (segnalato: «1st» e

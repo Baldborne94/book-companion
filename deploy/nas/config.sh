@@ -5,5 +5,5 @@
 set -e
 [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ] || exit 0
 pulito() { printf '%s' "$1" | tr -d '"\\\n\r'; }
-printf 'window.__BC_CONFIG__ = {"supabaseUrl":"%s","supabaseAnonKey":"%s"};\n' \
+printf 'window.__BC_CONFIG__ = {"supabaseUrl":"%s","supabaseAnonKey":"%s","libri":"/libri/"};\n' \
   "$(pulito "$SUPABASE_URL")" "$(pulito "$SUPABASE_ANON_KEY")" > /usr/share/nginx/html/config.js
