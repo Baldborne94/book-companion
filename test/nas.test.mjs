@@ -1,7 +1,7 @@
 // IL NAS DI CASA (`lib/nas.js`), chiesto dal lettore per leggere anche fuori
 // casa. Un NAS finto che risponde come nginx con `autoindex_format json`: le
 // cartelle del disco, i file col peso, e i guasti che il lettore puo' vedere.
-import { controllaNas, casaSulNas, normalizzaNas, cartellaNas, elencoNas, provaNas, libriSulNas, prendiDalNas, fraseNas, salvaLibriSulNas, leggiLibriSulNas, sulNas, salvaIndirizzoNas, indirizzoNas, daPrendereSulNas } from "../src/lib/nas.js";
+import { controllaNas, casaSulNas, normalizzaNas, cartellaNas, elencoNas, provaNas, libriSulNas, prendiDalNas, fraseNas, salvaLibriSulNas, leggiLibriSulNas, sulNas, salvaIndirizzoNas, indirizzoNas, daPrendereSulNas, nasDelPosto, daGuardareDaSolo, GUARDA_OGNI } from "../src/lib/nas.js";
 import { elencaDisco, controllaDisco } from "../src/lib/disco.js";
 
 const BASE = "https://nas.tail1234.ts.net/libri/";
@@ -103,6 +103,21 @@ export default async (t) => {
   t.eq("un libro che il NAS ha, senza file qui, si prende dal NAS", `${daPrendereSulNas("am", false, sn)?.base} ${daPrendereSulNas("am", false, sn)?.voce.byte}`, `${BASE} 1200`);
   t.eq("…col file qui si apre il suo", daPrendereSulNas("am", true, sn), null);
   t.eq("…e uno che il NAS non ha no", daPrendereSulNas("xx", false, sn), null);
+
+  // L'APP SERVITA DAL NAS CONOSCE IL SUO NAS (il lettore, su un telefono
+  // nuovo: «qui io li vedo vuoti»): da `/config.js` e dall'indirizzo da cui
+  // e' arrivata, e ci guarda da sola una volta al giorno
+  const POSTO = { supabaseUrl: "https://book-companion.tail1234.ts.net", libri: "/libri/" };
+  const DA = "https://book-companion.tail1234.ts.net";
+  const nuovo = memoria();
+  t.eq("dal NAS l'indirizzo e' gia' il suo", indirizzoNas(nuovo, POSTO, DA), "https://book-companion.tail1234.ts.net/libri/");
+  t.eq("…su Vercel, senza `libri`, nessuno", indirizzoNas(nuovo, { supabaseUrl: "x" }, "https://book-companion-ruddy.vercel.app"), null);
+  t.eq("…e uno scritto a mano vince", indirizzoNas(sn, POSTO, DA), BASE);
+  t.eq("mai guardato: si guarda da solo", daGuardareDaSolo(nuovo, 1000, POSTO, DA), nasDelPosto(POSTO, DA));
+  salvaLibriSulNas({}, 1000, nuovo);
+  t.eq("guardato da poco: no", daGuardareDaSolo(nuovo, 1000 + GUARDA_OGNI - 1, POSTO, DA), null);
+  t.eq("guardato ieri: di nuovo", daGuardareDaSolo(nuovo, 1000 + GUARDA_OGNI, POSTO, DA), nasDelPosto(POSTO, DA));
+  t.eq("un NAS scritto a mano si guarda col tasto", daGuardareDaSolo(sn, 10 ** 13, POSTO, DA), null);
 
   const ok = await provaNas(BASE, { chiedi: nas });
   t.eq("il NAS che risponde dice cosa c'e' in cima", `${ok.ok} ${ok.frase}`, "true Il NAS risponde: book-companion.");

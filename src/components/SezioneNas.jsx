@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { C, F, R } from "../data/constants.js";
-import { indirizzoNas, salvaIndirizzoNas, provaNas, controllaNas, salvaLibriSulNas, leggiLibriSulNas, fraseNas, fraseRapportoNas } from "../lib/nas.js";
+import { indirizzoNas, salvaIndirizzoNas, provaNas, guardaIlNas, salvaLibriSulNas, leggiLibriSulNas, fraseNas, fraseRapportoNas, nasDelPosto } from "../lib/nas.js";
 
 // IL NAS NELLE IMPOSTAZIONI (`lib/nas.js`): l'indirizzo, sul dispositivo
 // come le chiavi, la prova del collegamento e il controllo, che dice quali
@@ -8,6 +8,7 @@ import { indirizzoNas, salvaIndirizzoNas, provaNas, controllaNas, salvaLibriSulN
 // prende dal NAS (App, `prendiDalNasEApri`).
 export default function SezioneNas({ libri = [] }) {
   const [scritto, setScritto] = useState(() => indirizzoNas() || "");
+  const delPosto = nasDelPosto();
   const [stato, setStato] = useState(null); // { frase, ok }
   const [guardo, setGuardo] = useState(null); // { letti, totale }
   const [noti, setNoti] = useState(() => leggiLibriSulNas());
@@ -15,7 +16,8 @@ export default function SezioneNas({ libri = [] }) {
   async function salvaEProva() {
     const url = salvaIndirizzoNas(scritto);
     if (!url) {
-      setStato({ ok: false, frase: scritto.trim() ? "Questo non è un indirizzo: scrivilo come «nas.tuarete.ts.net/libri»." : "Indirizzo tolto: i libri non si prendono più dal NAS." });
+      setStato({ ok: false, frase: scritto.trim() ? "Questo non è un indirizzo: scrivilo come «nas.tuarete.ts.net/libri»." : delPosto ? "Torna il NAS da cui è arrivata l'app." : "Indirizzo tolto: i libri non si prendono più dal NAS." });
+      if (delPosto && !scritto.trim()) setScritto(delPosto);
       if (!scritto.trim()) salvaLibriSulNas({}, 0);
       setNoti(leggiLibriSulNas());
       return;
@@ -30,15 +32,7 @@ export default function SezioneNas({ libri = [] }) {
     if (!url || guardo) return;
     setGuardo({ letti: 0, totale: 0 });
     try {
-      const [{ elencaDisco, controllaDisco }, { tipiDi, tipoDi }] = await Promise.all([import("../lib/disco.js"), import("../lib/library.js")]);
-      const tipi = tipiDi(libri);
-      const { esito, mappa } = await controllaNas(libri, url, {
-        elenca: elencaDisco,
-        controlla: controllaDisco,
-        tipoDi: (b) => tipoDi(b, tipi),
-        onFile: (letti, totale) => (letti % 25 === 0 || letti === totale) && setGuardo({ letti, totale }),
-      });
-      salvaLibriSulNas(mappa);
+      const esito = await guardaIlNas(libri, url, { onFile: (letti, totale) => (letti % 25 === 0 || letti === totale) && setGuardo({ letti, totale }) });
       setNoti(leggiLibriSulNas());
       setStato({ ok: true, frase: fraseRapportoNas(esito) });
     } catch (e) {
@@ -53,7 +47,9 @@ export default function SezioneNas({ libri = [] }) {
   return (
     <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 10 }}>
       <p style={{ fontSize: F.piccolo, color: C.muted, lineHeight: 1.45 }}>
-        L'indirizzo della cartella dei libri sul NAS (quella che contiene «book-companion»). Fuori casa serve Tailscale acceso su questo dispositivo. Come preparare il NAS: docs/NAS.md.
+        {delPosto
+          ? "L'app arriva dal NAS: l'indirizzo è già il suo, e una volta al giorno guarda da sola quali libri ci sono. Fuori casa serve Tailscale acceso su questo dispositivo."
+          : "L'indirizzo della cartella dei libri sul NAS (quella che contiene «book-companion»). Fuori casa serve Tailscale acceso su questo dispositivo. Come preparare il NAS: docs/NAS.md."}
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input

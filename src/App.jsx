@@ -65,7 +65,7 @@ import SezioneNovita from "./components/SezioneNovita.jsx";
 import SezioneNas from "./components/SezioneNas.jsx";
 // quanto aspetta un libro preso dal NAS di essere entrato, prima di non aprirsi piu' da solo
 const APRI_DAL_NAS_ENTRO = 120_000;
-import { daPrendereSulNas, prendiDalNas, fraseNas } from "./lib/nas.js";
+import { daPrendereSulNas, prendiDalNas, fraseNas, daGuardareDaSolo, guardaIlNas } from "./lib/nas.js";
 import SezioneHardcover from "./components/SezioneHardcover.jsx";
 import { EVENTO as EVENTO_CHIAVI } from "./lib/chiaviInViaggio.js";
 import { cbrDaConvertire, convertiTutti, resocontoConversioni, ricordaLavoro, lavoroSospeso, dimenticaLavoro, restantiDelLavoro } from "./lib/convertiCbr.js";
@@ -1900,6 +1900,20 @@ export default function App() {
       annulla();
     };
   }, [books, localIds]);
+  // IL NAS DA CUI E' ARRIVATA L'APP SI GUARDA DA SOLO (`daGuardareDaSolo`):
+  // su un dispositivo nuovo «Apri dal NAS» c'e' senza passare dalle
+  // Impostazioni. Una volta per apertura, a riposo, coi libri gia' arrivati;
+  // un guasto si dice al tasto, quando il lettore lo tocca.
+  const nasGuardato = useRef(false);
+  useEffect(() => {
+    if (nasGuardato.current || !books.length || !daGuardareDaSolo()) return;
+    return aRiposo(() => {
+      const base = daGuardareDaSolo();
+      if (!base || nasGuardato.current) return;
+      nasGuardato.current = true;
+      guardaIlNas(books, base).catch(() => {});
+    });
+  }, [books]);
   async function unisciDoppioni(gruppi) {
     // il giro dei CBR potrebbe star convertendo proprio una copia da togliere
     if (filoLavoro.current || filoImport.current) {

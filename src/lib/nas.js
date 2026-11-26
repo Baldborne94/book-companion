@@ -53,7 +53,19 @@ const scrivi = (st, k, v) => {
   }
 };
 
-export const indirizzoNas = (st = globalThis.localStorage) => normalizzaNas(leggi(st, CHIAVE_NAS));
+// L'APP SERVITA DAL NAS CONOSCE GIA' IL SUO NAS (il lettore, su un telefono
+// nuovo: «qui io li vedo vuoti»): `/config.js` del NAS dice dove stanno i
+// libri (`libri`, scritto da `deploy/nas/config.sh`), e l'indirizzo e' quello
+// da cui l'app e' arrivata. Uno scritto a mano vince.
+export function nasDelPosto(posto = globalThis.window?.__BC_CONFIG__, origine = globalThis.location?.origin) {
+  if (!posto?.libri || !origine) return null;
+  try {
+    return normalizzaNas(new URL(posto.libri, origine).href);
+  } catch {
+    return null;
+  }
+}
+export const indirizzoNas = (st = globalThis.localStorage, posto, origine) => normalizzaNas(leggi(st, CHIAVE_NAS)) || nasDelPosto(posto, origine);
 export function salvaIndirizzoNas(scritto, st = globalThis.localStorage) {
   const url = normalizzaNas(scritto);
   scrivi(st, CHIAVE_NAS, url);
@@ -182,6 +194,18 @@ export function leggiLibriSulNas(st = globalThis.localStorage) {
     return { quando: 0, libri: {} };
   }
 }
+// E CI GUARDA DA SOLO: il NAS del posto si guarda a riposo se non e' mai
+// stato guardato su questo dispositivo, o da piu' di `GUARDA_OGNI` (i libri
+// entrati sul NAS da un altro dispositivo). Un NAS scritto a mano no: lo si
+// guarda col tasto, come prima.
+export const GUARDA_OGNI = 24 * 3600 * 1000;
+export function daGuardareDaSolo(st = globalThis.localStorage, ora = Date.now(), posto, origine) {
+  if (normalizzaNas(leggi(st, CHIAVE_NAS))) return null;
+  const base = nasDelPosto(posto, origine);
+  if (!base) return null;
+  const quando = leggiLibriSulNas(st).quando;
+  return !quando || ora - quando >= GUARDA_OGNI ? base : null;
+}
 export const sulNas = (id, st = globalThis.localStorage) => leggiLibriSulNas(st).libri[id] || null;
 
 // UN LIBRO SI PRENDE DAL NAS se qui non ha il file, il NAS ce l'ha e
@@ -237,6 +261,15 @@ export async function controllaNas(libri, base, { chiedi = globalThis.fetch, ele
   const mappa = {};
   for (const [id, v] of Object.entries(libriSulNas(esito))) mappa[id] = { ...v, pezzi: [...casa.pezzi, ...v.pezzi] };
   return { esito, mappa, file: file.length };
+}
+
+// il controllo intero, dal tasto e dal giro da solo: guarda, ricorda, racconta
+export async function guardaIlNas(libri, base, { onFile, st = globalThis.localStorage } = {}) {
+  const [{ elencaDisco, controllaDisco }, { tipiDi, tipoDi }] = await Promise.all([import("./disco.js"), import("./library.js")]);
+  const tipi = tipiDi(libri);
+  const { esito, mappa } = await controllaNas(libri, base, { elenca: elencaDisco, controlla: controllaDisco, tipoDi: (b) => tipoDi(b, tipi), onFile });
+  salvaLibriSulNas(mappa, Date.now(), st);
+  return esito;
 }
 
 export function fraseRapportoNas(esito) {

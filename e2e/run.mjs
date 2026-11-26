@@ -1092,6 +1092,35 @@ const SCENE = [
     },
   },
   {
+    // il lettore, su un telefono nuovo con l'app servita dal NAS: «qui io li
+    // vedo vuoti». Il NAS del posto (`libri` in /config.js) e' gia'
+    // l'indirizzo, e ci si guarda da soli: «Apri dal NAS» senza passare
+    // dalle Impostazioni
+    nome: "l'app servita dal NAS conosce il suo NAS e ci guarda da sola",
+    async fai({ browser }) {
+      const nas = await avviaNas(PORTA_NAS, { file: { "book-companion/Libri/La nebbia.epub": await epub() } });
+      try {
+        const libri = [{ id: "nb", title: "La nebbia", author: "Autore di Prova", fileType: "epub", fileTolto: true, addedAt: 1 }];
+        const d = await dispositivo(browser, { misura: TABLET, prima: `localStorage.getItem("bc_books") || localStorage.setItem("bc_books", ${JSON.stringify(JSON.stringify(libri))});` });
+        const { p } = d;
+        // /config.js come lo scrive deploy/nas/config.sh
+        await p.route("**/config.js", (r) => r.fulfill({ contentType: "application/javascript", body: `window.__BC_CONFIG__ = { libri: "http://localhost:${PORTA_NAS}/libri/" };` }));
+        await p.goto(`${URL_APP}?apri=libreria`);
+        await finche(() => p.evaluate(() => JSON.parse(localStorage.getItem("bc_nas_libri") || "null")?.libri?.nb || null), 10000, "il NAS del posto non si guarda da solo");
+        await p.getByText("La nebbia").first().click();
+        await p.getByRole("button", { name: "📖 Apri dal NAS" }).waitFor({ timeout: 5000 });
+        await p.keyboard.press("Escape");
+        await p.goto(URL_APP);
+        await p.getByRole("button", { name: /^Impostazioni/ }).first().click();
+        const scritto = await p.getByRole("textbox", { name: "Indirizzo del NAS" }).inputValue();
+        if (scritto !== `http://localhost:${PORTA_NAS}/libri/`) throw new Error(`l'indirizzo nelle Impostazioni: «${scritto}»`);
+        return { guasti: d.guasti, nota: `${nas.viste.length} richieste al NAS` };
+      } finally {
+        await nas.chiudi();
+      }
+    },
+  },
+  {
     // prima che il NAS arrivi (il lettore: «siamo pronti per l'arrivo del
     // nas?»): da Chrome 142 un sito pubblico che parla con un indirizzo di
     // casa chiede un permesso, e Tailscale (100.x) per Chrome e' casa. Negato,

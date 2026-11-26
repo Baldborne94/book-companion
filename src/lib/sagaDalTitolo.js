@@ -155,6 +155,14 @@ const EDIZIONE = /^(?:the\s+)?(?:deluxe|absolute|omnibus|complete|collected|ulti
 //    E i nomi scritti per un disco: «JoJo's_Bizarre_Adventure_Part_2_v07».
 const DISTESO = (s) => (/_/.test(s) ? s.replace(/_+/g, " ").replace(/\s+/g, " ").trim() : s);
 
+// «Book Two-027» e' il secondo libro nella copia di Drive (il lettore:
+// «Kill Six Billion Demons - Book Two-027» proposto come la saga «Book Two»,
+// n. 27): il numero in lettere si scrive in cifre, e da li' la copia di
+// Drive si legge come «Book 2-027»
+const LETTERE = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+const IN_LETTERE_DRIVE = new RegExp(`\\b(book|part|volume|tome)\\s+(${Object.keys(LETTERE).join("|")})(?=-\\d{3,4}$)`, "i");
+const INCIFRE = (s) => s.replace(IN_LETTERE_DRIVE, (_, a, n) => `${a} ${LETTERE[n.toLowerCase()]}`);
+
 // QUEL CHE RESTA TOLTA L'ETICHETTA E' IL TITOLO VERO, e nelle stesse
 // espressioni sta gia' catturato: dove il numero e la saga se ne vanno,
 // il gruppo rimasto e' il nome del romanzo. Si tiene perche' sullo
@@ -162,7 +170,7 @@ const DISTESO = (s) => (/_/.test(s) ? s.replace(/_+/g, " ").replace(/\s+/g, " ")
 // [02]:…» e i sei volumi di una saga diventano indistinguibili — la
 // copertina il titolo ce l'ha stampato sopra, la didascalia no.
 function leggi(campo, { fumetto = false } = {}) {
-  const s = DISTESO(String(campo || "").trim());
+  const s = INCIFRE(DISTESO(String(campo || "").trim()));
   if (!s) return null;
   let m = PARTE_V.exec(s);
   if (m) {
