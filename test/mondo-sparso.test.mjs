@@ -41,6 +41,19 @@ export default async (t) => {
   t.eq("«The Witcher» va in «Witcher», che ha piu' libri, con serie e numero suoi", JSON.stringify(uniti.w3), JSON.stringify({ saga: "Witcher", series: "Bonus", sagaOrder: 9 }));
   t.eq("«Red Rising Trilogy» va in «The Red Rising Saga»", uniti.r1?.saga, "The Red Rising Saga");
   t.eq("chi sta gia' nella grafia che vince resta, e una saga sola pure", ["w1", "r2", "du"].filter((id) => uniti[id]).join(), "");
+  // il lettore, con la foto di Anthony Ryan in tre ripiani: «Raven's
+  // Shadow», «Raven Shadow» (il genitivo perso) e «A Raven's Shadow Novel»
+  // (la dicitura della copertina)
+  const ryan = Object.fromEntries(
+    saghePropose([
+      ...["Blood Song", "A Duel of Evils", "Many Are the Dead"].map((title, i) => ({ id: `rs${i}`, title, author: "Anthony Ryan", saga: "Raven's Shadow", sagaOrder: i + 1 })),
+      { id: "tl", title: "Tower Lord", author: "Anthony Ryan", saga: "Raven Shadow", sagaOrder: 2 },
+      { id: "qf", title: "Queen of Fire", author: "Anthony Ryan", saga: "A Raven's Shadow Novel", sagaOrder: 3 },
+      { id: "ro", title: "Ravenor", author: "Dan Abnett", saga: "Raven", sagaOrder: 1 },
+    ]).map((x) => [x.id, x.dopo])
+  );
+  t.eq("«Raven Shadow» e «A Raven's Shadow Novel» vanno in «Raven's Shadow»", `${ryan.tl?.saga}|${ryan.qf?.saga}`, "Raven's Shadow|Raven's Shadow");
+  t.eq("…e «Raven» resta un'altra raccolta", ryan.ro, undefined);
   // e la raccolta del mondo scritta a modo del lettore («Malazan universe»)
   const malazan = Object.fromEntries(
     saghePropose([
