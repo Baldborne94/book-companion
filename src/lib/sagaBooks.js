@@ -849,15 +849,18 @@ export const chiaveSaga = (s) => senzaArticolo(s);
 // dentro.
 // IL NUCLEO DEL NOME DI UNA SAGA: senza articoli, punteggiatura e le parole
 // che dicono «serie» in genere. «Red Rising», «Red Rising Trilogy» e «The Red
-// Rising Saga» sono la stessa saga; «Witcher» e «The Witcher» pure. Lo usano
+// Rising Saga» sono la stessa saga; «Witcher» e «The Witcher» pure; e il
+// genitivo e la dicitura di copertina non contano («Raven Shadow», «A Raven's
+// Shadow Novel» e «Raven's Shadow» sono una). Lo usano
 // lo scaffale (una serie col nome della raccolta non la divide) e «Saghe da
 // sistemare» (due raccolte con lo stesso nucleo sono una).
-const GENERICHE_SERIE = new Set(["the", "a", "an", "il", "lo", "la", "i", "gli", "le", "saga", "series", "serie", "trilogy", "trilogia", "cycle", "ciclo", "sequence", "novels", "romanzi", "universe", "universo", "chronicles", "chronicle", "cronache", "of", "di", "del", "della"]);
+const GENERICHE_SERIE = new Set(["the", "a", "an", "il", "lo", "la", "i", "gli", "le", "saga", "series", "serie", "trilogy", "trilogia", "cycle", "ciclo", "sequence", "novel", "novels", "novella", "romanzo", "romanzi", "universe", "universo", "chronicles", "chronicle", "cronache", "of", "di", "del", "della"]);
 export const nucleoSerie = (s) =>
   String(s || "").trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/['’]s\b/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .split(" ")
     .filter((w) => w && !GENERICHE_SERIE.has(w))
