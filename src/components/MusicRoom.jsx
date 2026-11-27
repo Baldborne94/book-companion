@@ -8,7 +8,7 @@ import {
   braniDoppi, unisciDoppi, traslocaLapidi,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
-import BaldMusicNas from "./BaldMusicNas.jsx";
+import BaldMusicNas, { PaginaBaldMusic } from "./BaldMusicNas.jsx";
 import { collegato } from "../lib/navidrome.js";
 import { InAscolto, Icona, Faccia } from "./Ascolto.jsx";
 import {
@@ -982,7 +982,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
         )}
       </div>
       {/* LA MUSICA DI BALDMUSIC, in streaming dal NAS (`lib/navidrome.js`) */}
-      <BaldMusicNas playerRef={playerRef} queue={queue} playing={playing} cerca={cercato} />
+      <BaldMusicNas onApri={(id) => { setCerca(""); apri(id); }} playerRef={playerRef} queue={queue} playing={playing} cerca={cercato} />
       {/* CERCANDO, ANCHE I BRANI: si cerca quel che ci si ricorda, e un nome
           di brano non sta nel nome di una raccolta */}
       {cercato && braniVisti.length > 0 && (
@@ -1003,7 +1003,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
           text="Porta qui i tuoi file audio da «＋ Aggiungi» — pioggia e camino, arpe celtiche, cori lontani: li suona l'app, e ti accompagnano anche a tablet spento fino allo scadere del timer. Un link YouTube va bene lo stesso, ma solo a schermo acceso."
         />
         {/* senza musica qui, quella di BaldMusic si collega anche da questa vista */}
-        <BaldMusicNas playerRef={playerRef} queue={queue} playing={playing} />
+        <BaldMusicNas onApri={(id) => { setCerca(""); apri(id); }} playerRef={playerRef} queue={queue} playing={playing} />
       </>
     ) : (
       <>
@@ -1237,7 +1237,9 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
           </div>
         )}
 
-        {pagina ? (
+        {String(aperta || "").startsWith("nd:") ? (
+          <PaginaBaldMusic id={aperta} playerRef={playerRef} queue={queue} playing={playing} current={current} cerca={cerca} onChiudi={() => apri(null)} />
+        ) : pagina ? (
           paginaRaccolta(pagina)
         ) : (
           <>

@@ -2126,14 +2126,20 @@ const SCENE = [
         if (!(await p.getByText("Playlist", { exact: true }).count())) throw new Error("le playlist non si dicono a parte");
         const salvato = await p.evaluate(() => localStorage.getItem("bc_navidrome") || "");
         if (salvato.includes("segreta")) throw new Error("la password e' rimasta nella memoria del dispositivo");
-        // si apre la raccolta e si suona il secondo brano, in streaming
+        // la raccolta si apre come una pagina coi suoi brani (il lettore: «mi è
+        // possibile vedere i brani della raccolta?»), e si suona il secondo
         await p.getByRole("button", { name: "Apri Disney Italia" }).click();
+        await p.getByRole("heading", { name: "Disney Italia" }).waitFor({ timeout: 5000 });
+        if (await p.getByRole("button", { name: "Suona Da correre" }).count()) throw new Error("aperta la raccolta, la griglia e' ancora li'");
         await p.getByRole("button", { name: /^2\s*Hakuna Matata/ }).click();
         await finche(
           () => p.evaluate(() => { const a = document.querySelector("audio"); return a && /\/rest\/stream\?.*id=s2/.test(a.src) && !a.paused && a.currentTime > 0.2; }),
           10000,
           "il brano di BaldMusic non suona"
         );
+        // «‹ Le raccolte» chiude la pagina e torna alle raccolte
+        await p.getByRole("button", { name: "‹ Le raccolte" }).click();
+        await p.getByRole("button", { name: "Suona Disney Italia" }).waitFor({ timeout: 5000 });
         // riaperta l'app, niente password: le raccolte ci sono ancora
         await p.goto(`${URL_APP}?apri=musica`);
         await p.getByRole("button", { name: "Suona Disney Italia" }).waitFor({ timeout: 8000 });
