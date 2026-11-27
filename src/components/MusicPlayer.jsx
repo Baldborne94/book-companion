@@ -10,9 +10,10 @@ import { fronteDaMostrare } from "../lib/copertina.js";
 import { versoDelLibro } from "../lib/library.js";
 import { ascoltaCopertine } from "../lib/miniature.js";
 import { metadatiScheda, copertinaQuadrata } from "../lib/schedaMusica.js";
+import { collegato, streamDi } from "../lib/navidrome.js";
 
 // il nome della raccolta che suona: la coda ne tiene solo la chiave
-const nomeRaccolta = (queue) => (queue?.raccolta ? getLists().find((r) => r.id === queue.raccolta)?.name : null);
+const nomeRaccolta = (queue) => (queue?.raccolta ? getLists().find((r) => r.id === queue.raccolta)?.name || queue.nome || null : null);
 
 // Gli ultimi trenta secondi prima dello scadere del timer la musica scende
 // fino a spegnersi. L'ora chiesta resta quella: a quel minuto c'e' silenzio,
@@ -332,6 +333,19 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
       suonaFile(voce);
       return true;
     }
+    // UN BRANO DI BALDMUSIC suona in streaming da Navidrome, col gettone di
+    // questo dispositivo (`lib/navidrome.js`)
+    if (voce?.nd) {
+      const cred = collegato();
+      if (!cred) {
+        notify("Questo brano sta su BaldMusic: collega Navidrome dalla Musica 🎵");
+        return false;
+      }
+      spegniAudio();
+      setCurrent({ nd: voce.nd, name: voce.name, src: streamDi(cred, voce.nd), inizio: puntoDi(voce) });
+      setPlaying(true);
+      return true;
+    }
     const url = typeof voce === "string" ? voce.trim() : voce?.url;
     const comeSiChiama = (typeof voce === "string" ? name : voce?.name) || name;
     const src = parseYouTube(url || "");
@@ -362,26 +376,26 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
 
   // `da`: il brano scelto nella raccolta, o quello a cui si era; in
   // ordine casuale si parte da un brano a caso e la raccolta non ricorda
-  function playQueue(list, shuffle = false, { da = 0, raccolta = null } = {}) {
-    const clean = (list || []).filter((f) => f?.url || f?.trackId);
+  function playQueue(list, shuffle = false, { da = 0, raccolta = null, nome = null } = {}) {
+    const clean = (list || []).filter((f) => f?.url || f?.trackId || f?.nd);
     if (!clean.length) return false;
     const order = shuffle ? shuffled(clean) : clean;
     const i = shuffle ? 0 : Math.min(Math.max(0, da), order.length - 1);
     // `raccolta` e' quella che ricorda il suo brano (a caso no); `origine` e'
     // da dove viene la coda, anche a caso: e' quella che il libro ricorda
-    queueRef.current = { list: order, i, shuffle, raccolta: shuffle ? null : raccolta, origine: raccolta };
-    setQueue({ total: order.length, shuffle, index: i, raccolta: shuffle ? null : raccolta, origine: raccolta, elenco: order.map(voceInCoda) });
+    queueRef.current = { list: order, i, shuffle, raccolta: shuffle ? null : raccolta, origine: raccolta, nome };
+    setQueue({ total: order.length, shuffle, index: i, raccolta: shuffle ? null : raccolta, origine: raccolta, nome, elenco: order.map(voceInCoda) });
     return start(order[i]);
   }
 
   // la coda come la vede chi guarda: nome e chiave, mai i byte
-  const voceInCoda = (f) => ({ id: f.id, name: f.name, trackId: f.trackId, url: f.url });
+  const voceInCoda = (f) => ({ id: f.id, name: f.name, trackId: f.trackId, url: f.url, nd: f.nd });
 
   function vaiA(i) {
     const q = queueRef.current;
     if (!q.list[i]) return false;
     q.i = i;
-    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, origine: q.origine, elenco: q.list.map(voceInCoda) });
+    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, origine: q.origine, nome: q.nome, elenco: q.list.map(voceInCoda) });
     return start(q.list[i]);
   }
 
@@ -422,7 +436,7 @@ const MusicPlayer = forwardRef(function MusicPlayer({ onInfo, hideMini, onOpen, 
       i = 0;
     }
     q.i = i;
-    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, origine: q.origine, elenco: q.list.map(voceInCoda) });
+    setQueue({ total: q.list.length, shuffle: q.shuffle, index: i, raccolta: q.raccolta, origine: q.origine, nome: q.nome, elenco: q.list.map(voceInCoda) });
     start(q.list[i]);
   }
   advanceRef.current = advance;
