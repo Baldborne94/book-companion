@@ -434,13 +434,16 @@ export function getBookMusic(bookId) {
 export function legameMusica(music) {
   const c = music?.current;
   if (!c) return null;
-  const base = { url: c.url, trackId: c.trackId, name: c.name };
+  const base = { url: c.url, trackId: c.trackId, name: c.name, ...(c.nd ? { nd: c.nd } : {}) };
   const q = music.queue;
   if (!q) return { ...base, raccolta: null, sola: true };
-  return { ...base, raccolta: q.origine || q.raccolta || null, coda: true, ...(q.shuffle ? { casuale: true } : {}) };
+  const raccolta = q.origine || q.raccolta || null;
+  // una raccolta di BaldMusic non sta fra quelle di qui: il nome viaggia con lei
+  const nome = raccolta?.startsWith?.("nd:") && q.nome ? { nomeRaccolta: q.nome } : {};
+  return { ...base, raccolta, coda: true, ...nome, ...(q.shuffle ? { casuale: true } : {}) };
 }
 
-const stessaMelodia = (a, b) => (a?.trackId ? a.trackId === b?.trackId : !!a?.url && a.url === b?.url);
+export const stessaMelodia = (a, b) => (a?.trackId ? a.trackId === b?.trackId : a?.nd ? a.nd === b?.nd : !!a?.url && a.url === b?.url);
 
 // come si riprende la musica di un libro: la raccolta dal suo brano, tutte
 // le melodie dal suo brano, o la melodia sola, solo se era sola. Un legame
@@ -454,6 +457,9 @@ export function comeRiprendere(pair, { raccolte = getLists(), favs = getFavorite
   if (pair.trackId) pair = { ...pair, trackId: tracciaViva(pair.trackId, tutte) };
   if (pair.sola) return { melodia: pair };
   const casuale = !!pair.casuale;
+  // LA RACCOLTA DI BALDMUSIC SI RIPRENDE DAL NAS: i suoi brani si chiedono a
+  // Navidrome al tocco di «▶ Riprendi» (App), e lo stesso brano si ritrova li'
+  if (String(pair.raccolta || "").startsWith("nd:")) return { navidrome: { id: pair.raccolta, name: pair.nomeRaccolta || "BaldMusic" }, melodia: pair, casuale };
   const candidate = pair.raccolta ? raccolte.filter((r) => r.id === pair.raccolta) : pair.coda ? [] : raccolte;
   for (const r of candidate) {
     const brani = braniDi(r, favs);
@@ -483,6 +489,7 @@ export const MARGINE = 5;
 
 export function chiaveMelodia(voce) {
   if (voce?.trackId) return `f:${voce.trackId}`;
+  if (voce?.nd) return `n:${voce.nd}`;
   const src = parseYouTube(voce?.url || "");
   return src?.kind === "video" ? `y:${src.video}` : null;
 }

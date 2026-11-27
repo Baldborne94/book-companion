@@ -8,6 +8,8 @@ import {
   braniDoppi, unisciDoppi, traslocaLapidi,
 } from "../lib/music.js";
 import EmptyState from "./EmptyState.jsx";
+import BaldMusicNas from "./BaldMusicNas.jsx";
+import { collegato } from "../lib/navidrome.js";
 import { InAscolto, Icona, Faccia } from "./Ascolto.jsx";
 import {
   braniInVista, perLettera, raccolteInVista, inQuante, vistaIniziale, vistaSalvata, salvaVista, ordineSalvato, salvaOrdine, ORDINI,
@@ -465,7 +467,7 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
       ripiegabile={!wide}
       music={music}
       playerRef={playerRef}
-      nomeRaccolta={queue?.raccolta ? liveRac.find((r) => r.id === queue.raccolta)?.name : null}
+      nomeRaccolta={queue?.raccolta ? liveRac.find((r) => r.id === queue.raccolta)?.name || queue.nome || null : null}
       vuoto={
         liveFavs.length > 0 && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -925,7 +927,9 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
   const braniVisti = braniInVista(liveFavs, { cerca, ordine });
   const conLettere = ordine === "nome" && !cercato && braniVisti.length >= 20;
   const gruppi = conLettere ? perLettera(braniVisti) : null;
-  const vistaOra = vistaIniziale(vista, liveRac.length);
+  // le raccolte di BaldMusic stanno nella vista delle raccolte: collegato
+  // Navidrome, si parte da li' anche senza raccolte di qui
+  const vistaOra = vistaIniziale(vista, liveRac.length + (collegato() ? 1 : 0));
 
   const vistaRaccolte = (
     <>
@@ -977,6 +981,8 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
           </button>
         )}
       </div>
+      {/* LA MUSICA DI BALDMUSIC, in streaming dal NAS (`lib/navidrome.js`) */}
+      <BaldMusicNas playerRef={playerRef} queue={queue} playing={playing} cerca={cercato} />
       {/* CERCANDO, ANCHE I BRANI: si cerca quel che ci si ricorda, e un nome
           di brano non sta nel nome di una raccolta */}
       {cercato && braniVisti.length > 0 && (
@@ -990,11 +996,15 @@ export default function MusicRoom({ music, playerRef, notify, onCambiata, aperta
 
   const vistaBrani =
     liveFavs.length === 0 ? (
-      <EmptyState
-        emoji="🎼"
-        title="La sala della musica attende"
-        text="Porta qui i tuoi file audio da «＋ Aggiungi» — pioggia e camino, arpe celtiche, cori lontani: li suona l'app, e ti accompagnano anche a tablet spento fino allo scadere del timer. Un link YouTube va bene lo stesso, ma solo a schermo acceso."
-      />
+      <>
+        <EmptyState
+          emoji="🎼"
+          title="La sala della musica attende"
+          text="Porta qui i tuoi file audio da «＋ Aggiungi» — pioggia e camino, arpe celtiche, cori lontani: li suona l'app, e ti accompagnano anche a tablet spento fino allo scadere del timer. Un link YouTube va bene lo stesso, ma solo a schermo acceso."
+        />
+        {/* senza musica qui, quella di BaldMusic si collega anche da questa vista */}
+        <BaldMusicNas playerRef={playerRef} queue={queue} playing={playing} />
+      </>
     ) : (
       <>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>

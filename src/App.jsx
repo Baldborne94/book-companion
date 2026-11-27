@@ -39,7 +39,7 @@ import { cercaNuovaVersione, cercaInSilenzio, siAggiornaNascosta } from "./lib/a
 import Guasto from "./components/Guasto.jsx";
 import Home from "./components/Home.jsx";
 import MusicPlayer from "./components/MusicPlayer.jsx";
-import { getBookMusic, setBookMusic, legameMusica, comeRiprendere } from "./lib/music.js";
+import { getBookMusic, setBookMusic, legameMusica, comeRiprendere, stessaMelodia } from "./lib/music.js";
 import { getJump, clearJump, getMarks } from "./lib/annotations.js";
 import { doppioniInBiblioteca } from "./lib/doppioni.js";
 import { aRiposo } from "./lib/riposo.js";
@@ -2110,20 +2110,37 @@ export default function App() {
       if (come) {
         const aCaso = come.casuale ? ", a caso" : "";
         notify(
-          come.raccolta
-            ? `Questo libro suona con la raccolta «${come.raccolta.name}»${aCaso}`
+          come.raccolta || come.navidrome
+            ? `Questo libro suona con la raccolta «${(come.raccolta || come.navidrome).name}»${aCaso}`
             : come.tutte
               ? `Questo libro suona con le tue melodie${aCaso}`
               : `Questo libro suona con «${come.melodia.name || "la sua melodia"}»`,
           {
             label: "▶ Riprendi",
             onClick: () =>
-              come.brani
+              come.navidrome
+                ? riprendiDaNavidrome(come)
+                : come.brani
                 ? playerRef.current?.playQueue(come.brani, come.casuale, { da: come.da, raccolta: come.raccolta?.id || null })
                 : playerRef.current?.play(come.melodia),
           }
         );
       }
+    }
+  }
+
+  // la raccolta di BaldMusic di un libro: i brani si chiedono al NAS adesso,
+  // e si riparte dal brano a cui si era
+  async function riprendiDaNavidrome(come) {
+    const { collegato, braniNavidrome, fraseNavidrome } = await import("./lib/navidrome.js");
+    const cred = collegato();
+    if (!cred) return notify("Questa raccolta sta su BaldMusic: collega Navidrome dalla Musica 🎵");
+    try {
+      const brani = await braniNavidrome(cred, come.navidrome.id);
+      const da = Math.max(0, brani.findIndex((b) => stessaMelodia(come.melodia, b)));
+      if (!playerRef.current?.playQueue(brani, come.casuale, { da, raccolta: come.navidrome.id, nome: come.navidrome.name })) notify("La raccolta su BaldMusic è vuota 🎵");
+    } catch (e) {
+      notify(fraseNavidrome(e));
     }
   }
 

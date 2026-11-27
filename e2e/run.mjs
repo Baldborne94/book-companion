@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { build, preview } from "vite";
 import { avviaNas } from "./nasFinto.mjs";
+import { avviaNavidrome } from "./navidromeFinto.mjs";
 import { avviaSupabase, sessioneFinta } from "./supabaseFinto.mjs";
 import { fumetto, fumettoGrosso, fumettoLungo, epub, epubACapitoli, epubConContorno, epubConPagine, pdf, wav, FRASE, mondoDisco, png, pngRighe, pngFasce } from "./libri.mjs";
 import { rar4 } from "../test/rar-finto.mjs";
@@ -29,6 +30,7 @@ process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
 const PORTA_DB = 4599;
 const PORTA_APP = 4190;
 const PORTA_NAS = 4610;
+const PORTA_NAVIDROME = 4620;
 const URL_APP = `http://localhost:${PORTA_APP}/`;
 const aspetta = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -2092,6 +2094,54 @@ const SCENE = [
       await p.getByRole("tab", { name: /Brani/ }).waitFor({ timeout: 5000 });
       if (await p.getByRole("button", { name: /^Suona / }).count()) throw new Error("riaperta l'app, una raccolta eliminata e' tornata");
       return { guasti: d.guasti, nota: "23 brani, ricerca a parole sparse, lettore ripiegato, lettere, menu del brano, indietro, raccolte eliminate (i brani restano)" };
+    },
+  },
+  {
+    // chiesto dal lettore: «agganciare la mia applicazione baldmusic già
+    // presente sul nas al mio music player», «raccolte e playlist», «una volta
+    // date le credenziali non me le chieda ogni volta sullo stesso dispositivo»
+    nome: "BaldMusic: si collega Navidrome una volta, le sue raccolte e playlist suonano in streaming, e riaperta l'app non chiede la password",
+    async fai({ browser }) {
+      const nav = await avviaNavidrome(PORTA_NAVIDROME, {
+        playlist: [
+          { id: "p1", name: "Disney Italia", comment: "Raccolta della cartella «Disney Italia» · BaldMusic", songCount: 2 },
+          { id: "p2", name: "Da correre", songCount: 1 },
+        ],
+        brani: { p1: [{ id: "s1", title: "Il cerchio della vita", artist: "Ivana Spagna", duration: 30 }, { id: "s2", title: "Hakuna Matata", duration: 30 }], p2: [{ id: "s3", title: "Corsa" }] },
+        audio: wav(30),
+      });
+      try {
+        const d = await dispositivo(browser, { misura: TABLET });
+        const { p } = d;
+        await p.goto(`${URL_APP}?apri=musica`);
+        await p.getByRole("button", { name: "Collega Navidrome" }).click();
+        await p.getByRole("textbox", { name: "Indirizzo di Navidrome" }).fill(`http://localhost:${PORTA_NAVIDROME}`);
+        await p.getByRole("textbox", { name: "Utente di Navidrome" }).fill("lettore");
+        await p.getByLabel("Password di Navidrome").fill("sbagliata");
+        await p.getByRole("button", { name: "Collega", exact: true }).click();
+        await finche(() => testoAvviso(p, /non riconosce utente e password/), 8000, "la password sbagliata non si dice");
+        await p.getByLabel("Password di Navidrome").fill("segreta");
+        await p.getByRole("button", { name: "Collega", exact: true }).click();
+        await p.getByRole("button", { name: "Suona Disney Italia" }).waitFor({ timeout: 8000 });
+        if (!(await p.getByText("Playlist", { exact: true }).count())) throw new Error("le playlist non si dicono a parte");
+        const salvato = await p.evaluate(() => localStorage.getItem("bc_navidrome") || "");
+        if (salvato.includes("segreta")) throw new Error("la password e' rimasta nella memoria del dispositivo");
+        // si apre la raccolta e si suona il secondo brano, in streaming
+        await p.getByRole("button", { name: "Apri Disney Italia" }).click();
+        await p.getByRole("button", { name: /^2\s*Hakuna Matata/ }).click();
+        await finche(
+          () => p.evaluate(() => { const a = document.querySelector("audio"); return a && /\/rest\/stream\?.*id=s2/.test(a.src) && !a.paused && a.currentTime > 0.2; }),
+          10000,
+          "il brano di BaldMusic non suona"
+        );
+        // riaperta l'app, niente password: le raccolte ci sono ancora
+        await p.goto(`${URL_APP}?apri=musica`);
+        await p.getByRole("button", { name: "Suona Disney Italia" }).waitFor({ timeout: 8000 });
+        if (await p.getByRole("button", { name: "Collega Navidrome" }).count()) throw new Error("riaperta l'app richiede di collegare Navidrome");
+        return { guasti: d.guasti, nota: `${nav.viste.filter((v) => v.includes("/stream")).length} streaming, ${nav.viste.length} richieste` };
+      } finally {
+        await nav.chiudi();
+      }
     },
   },
   {
