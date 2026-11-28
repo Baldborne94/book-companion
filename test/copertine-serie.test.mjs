@@ -2,7 +2,7 @@
 // dal lettore con la foto della raccolta di Monster: «per Monster riesci a
 // recuperarmi le copertine?». Le schede come le sue (il nome del file della
 // scansione, il numero nella saga); il catalogo e' la risposta vera.
-import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro, edizioniDellOpera, opereDaChiedere, scelteDelVolume, editoriDelleScelte, tutteDellEditore, domandaEdizioni, numerataPerParte, serieNelTitolo, editoreLeggibile, aggiustaByte, chiaveEditore, nomeOriginale, PAGINE_MAX } from "../src/lib/copertineSerie.js";
+import { numeroNelTitolo, copertinePerVolume, autoreDellaRaccolta, domandaSerie, cercaCopertineSerie, scaricaCopertina, sceltePerCopertina, cercaCopertinaDelLibro, edizioniDellOpera, opereDaChiedere, scelteDelVolume, editoriDelleScelte, tutteDellEditore, domandaEdizioni, numerataPerParte, serieNelTitolo, editoreLeggibile, aggiustaByte, chiaveEditore, nomeOriginale, PAGINE_MAX, titoloProprio } from "../src/lib/copertineSerie.js";
 import catalogo, { edizioni } from "./monster-catalogo.mjs";
 import { tutta as jojoTutta, parte7 as jojo7, edizioniVol2, perAutore, giapponese1, giapponese2 } from "./jojo-catalogo.mjs";
 
@@ -85,6 +85,24 @@ export default async (t) => {
   chieste.length = 0;
   await cercaCopertineSerie({ nome: "Monster", libri }, { fetcher: finto([[]]) });
   t.eq("senza autore e niente trovato, una domanda sola", chieste.join(), "senza");
+  // IL LETTORE CON DISCWORLD: «Open Library non ha copertine per i volumi».
+  // I romanzi non si chiamano «Discworld 1»: la serie non li trova, e ognuno
+  // si cerca per titolo e autore
+  const dw = [
+    { id: "d1", title: "The Colour of Magic", author: "Terry Pratchett", saga: "Discworld", sagaOrder: 1 },
+    { id: "d2", title: "The Light Fantastic", author: "Terry Pratchett", saga: "Discworld", sagaOrder: 2 },
+    { id: "d3", title: "Discworld 3", author: "Terry Pratchett", saga: "Discworld", sagaOrder: 3 },
+  ];
+  const cercati = [];
+  const opera = async ({ titolo, autore }) => (cercati.push(`${titolo}/${autore}`), titolo === "The Colour of Magic" ? { copertina: 101, chiave: "/works/OL1W" } : null);
+  const disco = await cercaCopertineSerie({ nome: "Discworld", libri: dw }, { fetcher: async () => ({ ok: true, json: async () => ({ docs: [] }) }), opera });
+  t.eq("i volumi col loro titolo si cercano per titolo e autore", cercati.sort().join(" | "), "The Colour of Magic/Terry Pratchett | The Light Fantastic/Terry Pratchett");
+  t.eq("…e quello trovato si propone col suo numero", disco.proposte.map((p) => `${p.numero}:${p.copertina}`).join(), "1:101");
+  t.eq("…gli altri restano fra i mancanti", disco.mancano.join(), "2,3");
+  t.eq("«Discworld 3» non ha un titolo suo", titoloProprio(dw[2], "Discworld"), false);
+  t.eq("…né la firma del gruppo fra parentesi", titoloProprio({ title: "Monster - Volume_02_[Mangascreener]" }, "Monster"), false);
+  t.eq("«The Colour of Magic» sì", titoloProprio(dw[0], "Discworld"), true);
+  t.eq("né un numero lungo, né «v012», né «Volume»", ["Discworld 012", "Discworld v012", "Discworld Volume 12"].some((title) => titoloProprio({ title }, "Discworld")), false);
   let esploso = false;
   await cercaCopertineSerie({ nome: "Monster", libri }, { fetcher: async () => ({ ok: false, status: 503 }) }).catch(() => (esploso = true));
   t.c("un guasto del catalogo si dice, non e' «non ce l'ha»", esploso);

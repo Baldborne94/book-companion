@@ -194,7 +194,53 @@ export function serieNelTitolo(titolo, serie) {
   return sue.length && sue.every((p) => nel.has(p)) ? t : null;
 }
 
-export async function cercaCopertineSerie({ nome, libri = [] }, { fetcher = fetch } = {}) {
+// I VOLUMI COL LORO TITOLO (il lettore con Discworld: «Open Library non ha
+// copertine per i volumi di «Discworld»»). La ricerca per serie vuole il nome
+// della serie e il numero nel titolo dell'opera, come «Monster Vol. 13»; i
+// romanzi del Mondo Disco si chiamano «The Colour of Magic», e il catalogo
+// non li scrive «Discworld 1». Un volume rimasto senza proposta che ha un
+// titolo suo (parole oltre il nome, il numero e «vol») si cerca per titolo e
+// autore, come un libro solo, al più `PER_TITOLO_MAX`, tre alla volta.
+export const PER_TITOLO_MAX = 60;
+const SOLO_SERIE = new Set(["vol", "volume", "tome", "band", "libro", "book", "no", "n", "part", "parte", "the", "of"]);
+export function titoloProprio(b, nome) {
+  const via = new Set(parole(nome));
+  // la firma del gruppo fra parentesi non è un titolo («[Mangascreener]»)
+  return parole(String(b?.title || "").replace(/[[(][^\])]*[\])]/g, " ")).some((w) => !via.has(w) && !SOLO_SERIE.has(w) && !/^\d+$/.test(w) && !/^v\d+$/.test(w) && w.length >= 3);
+}
+async function perTitolo(esito, { nome, libri }, { fetcher, opera }) {
+  const resta = new Set(esito.mancano);
+  const daCercare = libri.filter((b) => resta.has(numeroDi(b)) && titoloProprio(b, nome)).slice(0, PER_TITOLO_MAX);
+  if (!daCercare.length) return esito;
+  const trovate = new Map();
+  const coda = [...daCercare];
+  const lavora = async () => {
+    while (coda.length) {
+      const b = coda.shift();
+      const o = await opera({ titolo: b.title, autore: b.author }, fetcher).catch(() => null);
+      if (o?.copertina) trovate.set(b.id, { b, o });
+    }
+  };
+  await Promise.all([lavora(), lavora(), lavora()]);
+  if (!trovate.size) return esito;
+  const nuove = [...trovate.values()].map(({ b, o }) => {
+    const sua = { chiave: o.chiave || null, copertina: o.copertina, titolo: b.title };
+    return { libro: b, numero: numeroDi(b), copertina: o.copertina, titolo: b.title, chiave: o.chiave || null, opere: [sua], etichetta: String(numeroDi(b)) };
+  });
+  const coperti = new Set(nuove.map((p) => p.numero));
+  return {
+    ...esito,
+    proposte: [...esito.proposte, ...nuove].sort((a, b) => (a.numero ?? 0) - (b.numero ?? 0)),
+    mancano: esito.mancano.filter((n) => !coperti.has(n)),
+  };
+}
+
+export async function cercaCopertineSerie({ nome, libri = [] }, { fetcher = fetch, opera = operaConCopertina } = {}) {
+  const esito = await perSerie({ nome, libri }, { fetcher });
+  return perTitolo(esito, { nome, libri }, { fetcher, opera });
+}
+
+async function perSerie({ nome, libri = [] }, { fetcher = fetch } = {}) {
   if (numerataPerParte(libri)) {
     const parti = new Map();
     const senza = [];
