@@ -979,6 +979,10 @@ export async function altreVoci(nome, trovata, deposito = DEPOSITO, wiki = LEXIC
   for (const k of [...chiavi].sort((a, b) => a.length - b.length || (a < b ? -1 : 1)).slice(0, ALTRE_MAX)) {
     const v = await voceLore(k, deposito, wiki).catch(() => null);
     if (!v?.t || viste.has(chiave(v.t))) continue;
+    // UNA VOCE CON UN ALTRO NOME NON È UN'ALTRA VOCE COL NOME (il lettore in
+    // Thousand Sons: da «Phoenix» un rinvio portava a Jain Zar, e il
+    // paragrafo la sceglieva): il titolo a cui si arriva deve portarlo
+    if (!basiDi(chiave(nome)).some((b) => chiave(v.t) === b || chiave(v.t).startsWith(`${b} `) || chiave(v.t).startsWith(`${b}-`))) continue;
     viste.add(chiave(v.t));
     out.push(v);
   }
@@ -1016,12 +1020,32 @@ export function sceltaDalContesto(trovata, altre = [], contesto = "", nome = "")
   return max >= base + 2 ? meglio : trovata;
 }
 
+// le parole scritte maiuscole della selezione che il nome trovato non ha
+// («Court» in «Phoenix Court» trovato come «phoenix»); il genitivo e il
+// plurale contano come la parola
+export function nomiMancanti(raw, k) {
+  const dentro = new Set(String(k || "").split(/[\s-]+/));
+  return (String(raw || "").match(FORMA) || [])
+    .map((p) => p.replace(/^['’-]+|['’-]+$/g, ""))
+    .filter((p) => /^\p{Lu}/u.test(p) && p.length >= 3)
+    .filter((p) => {
+      const w = chiave(p.replace(/['’]s?$/i, ""));
+      return !dentro.has(w) && !(w.endsWith("s") && dentro.has(w.slice(0, -1)));
+    });
+}
+
 // Tutto insieme, per la scheda: la voce da mostrare (`dalParagrafo` se non
 // e' quella del wiki) e le altre, la trovata compresa se e' stata scavalcata
 export async function voceNelContesto(raw, contesto = "", deposito = DEPOSITO, wiki = LEXICANUM) {
   const preso = await trovaLore(raw, deposito, wiki);
   if (!preso) return null;
   const trovata = preso.voce;
+  // UN NOME A CUI MANCA UN PEZZO NON È QUEL NOME (il lettore: «Phoenix
+  // Court» apriva «Phoenix»): se una parola maiuscola della selezione non
+  // sta nel nome trovato, la voce è solo la più vicina, e si dice; niente
+  // scelta dal paragrafo né altre voci, che girerebbero attorno al pezzo
+  const manca = nomiMancanti(raw, preso.k);
+  if (manca.length) return { voce: { ...trovata, vicina: String(raw).trim() }, altre: [] };
   const altre = await altreVoci(preso.k, trovata, deposito, wiki);
   const scelta = sceltaDalContesto(trovata, altre, contesto, preso.k);
   if (scelta === trovata) return { voce: trovata, altre };
