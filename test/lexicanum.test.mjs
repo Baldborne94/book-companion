@@ -880,6 +880,21 @@ However, after Horus' fall to [[Chaos]] on [[Davin]], he was considered too loya
     t.eq("il nome cercato non è un indizio", sceltaDalContesto(raider, [V("Reaver Titan", "Reaver engine")], "the Reavers engine", "reavers"), raider);
     t.eq("nemmeno al plurale", (await voceNelContesto("Reavers", "", d))?.altre.some((v) => v.t === "Reaverine"), false);
     t.eq("e un nome senza altre voci non ne ha", (await voceNelContesto("Reaverine", paragrafo, d))?.altre.length, 0);
+    // IL LETTORE IN THOUSAND SONS: «Phoenix Court» non ha una voce, e la
+    // scheda apriva Jain Zar «scelta dal paragrafo che leggi», arrivata da
+    // un rinvio fra le chiavi che cominciano con «phoenix»
+    const ts = deposito();
+    ts.m.set("lex:phoenix", V("Phoenix", "The phoenix is a mythical bird; the name is used across the Imperium."));
+    ts.m.set("lex:phoenix lord", V("Phoenix Lord", "The Phoenix Lords are the first Exarchs of the Eldar Aspect Shrines."));
+    ts.m.set("lex:phoenix lord jain zar", { t: "Phoenix Lord Jain Zar", r: "Jain Zar" });
+    ts.m.set("lex:jain zar", V("Jain Zar", "Jain Zar is the Phoenix Lord of the Howling Banshees. She guards the library of the Great Library and the Primarch's records of the Thousand Sons."));
+    const corte = "Over the course of the three months since the death of the Phoenix Court, the entire repository of the Great Library was copied. The Primarch of the Thousand Sons devoured each text.";
+    const pc = await voceNelContesto("Phoenix Court", corte, ts);
+    t.eq("«Phoenix Court» senza voce: la più vicina, e si dice", `${pc?.voce.t} | ${pc?.voce.vicina}`, "Phoenix | Phoenix Court");
+    t.eq("…senza saltare a un'altra dal paragrafo", `${!!pc?.voce.dalParagrafo} ${pc?.altre.length}`, "false 0");
+    t.eq("un rinvio a una voce con un altro nome non è un'altra voce col nome", (await altreVoci("phoenix", await voceLore("phoenix", ts), ts)).map((v) => v.t).join(" | "), "Phoenix Lord");
+    t.eq("e il nome intero, quando c'è, resta quello", (await voceNelContesto("Phoenix Lord", corte, ts))?.voce.vicina, undefined);
+    t.eq("…anche al plurale: «Phoenix Lords» è la voce Phoenix Lord", (await voceNelContesto("Phoenix Lords", corte, ts))?.voce.vicina, undefined);
     // e Fandom, con le sue chiavi
     const f = deposito();
     f.m.set("fan:reaver", { t: "Reaver", r: "Reavers (Drukhari)" });

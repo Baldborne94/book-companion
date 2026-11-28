@@ -586,7 +586,9 @@ export default function DictionaryCard({ dict: dictProp, book, alto, onClose }) 
           )}
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: F.corpo, fontWeight: 600, color: C.text }}>{voceLore.t}</span>
-            {voceLore.dalParagrafo ? (
+            {voceLore.vicina ? (
+              <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>nessuna voce per «{voceLore.vicina}»: questa è la più vicina</span>
+            ) : voceLore.dalParagrafo ? (
               <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>scelta dal paragrafo che leggi</span>
             ) : (
               voceLore.via && <span style={{ fontSize: F.minuscolo, color: C.muted, fontStyle: "italic" }}>da «{voceLore.via}»</span>
