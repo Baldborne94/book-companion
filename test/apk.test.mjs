@@ -166,5 +166,8 @@ export async function cucitura(t) {
   t.c("…e la diagnosi conta le finestre aperte (z) dopo i passi del canale", /"f", "e", "z", "g", /.test(blocco));
   const yml = readFileSync(".github/workflows/apk.yml", "utf8");
   t.c("la CI cuce dopo l'update e prima del build", /bubblewrap update[^\n]*\n(?:[^\n]*\n)*?[^\n]*apk\.mjs cuci\n(?:[^\n]*\n)*?[^\n]*bubblewrap build/.test(yml));
-  t.c("…e riparte quando cambia android/", /- android\/\*\*/.test(yml));
+  // Vercel scollegato (il lettore non usa l'APK): il giro aspetterebbe le
+  // icone su Vercel, quindi parte solo a comando
+  const avvio = yml.slice(yml.indexOf("\non:"), yml.indexOf("\npermissions:"));
+  t.c("…e parte solo a comando, mai da solo su main", /workflow_dispatch/.test(avvio) && !/push:|pull_request:/.test(avvio));
 }
