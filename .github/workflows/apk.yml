@@ -16,24 +16,10 @@
 # e partirebbe con la barra di Chrome).
 name: APK
 
+# Solo a comando: l'APK apre l'app su Vercel, che il lettore non usa più
+# (l'app sta sul NAS, installata da Chrome), e Vercel non è più collegato al
+# repository. Il giro resta per chi volesse rifarlo a mano.
 on:
-  push:
-    branches: [main]
-    paths:
-      - public/manifest.json
-      - public/icons/**
-      - public/.well-known/assetlinks.json
-      - scripts/apk.mjs
-      - android/**
-      - .github/workflows/apk.yml
-  pull_request:
-    paths:
-      - public/manifest.json
-      - public/icons/**
-      - public/.well-known/assetlinks.json
-      - scripts/apk.mjs
-      - android/**
-      - .github/workflows/apk.yml
   workflow_dispatch:
 
 permissions:
